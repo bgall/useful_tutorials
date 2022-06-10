@@ -118,15 +118,10 @@ The error tells us that the function we passed to the unused_fn argument did did
 
 There are different approaches to resolving this issue. Since there is no reasonable way to assign $1$ of the $K > 1$ distinct values for those character variables varying within `person` or `item`, we always set those values to `NA`. For non-character variables, we can either set those values to NA or assign their observed (i.e., complete-case) mean. While `pivot_wider` notes that one can apply different functions to different variables to implement these different strategies, the documentation of how to do this is not particularly good. Instead, we'll employ both outside of the `pivot_wider` call as follows:
 
- 1. Keep variables that make up the key (where our key is item*person)
-    and those that we want to retain in our wide data.
+ 1. Keep variables that make up the pivot key (`item` and `person`), as well as those unused variables that we want to retain in our wide data.
  2. Group the data by the key variables.
- 3. Extract the count (N_k) of distinct values for each of the K variables in
-    the grouped data for each key-value - I simultaneously calculate the
-    number of unique values of e.g. quality and other variables for each
-    person*item value.
- 4. Create a new data.frame with a row for each distinct key-value pair and
-    the same columns as the ungrouped data.frame in Step 2.
+ 3. For each distinct set of values for `item` and `person`, extract the count ($N_w$) of distinct values for each of the $W$ variables in the grouped data.
+ 4. Create a new `data.frame` with a row for each `item`-`person` combination and the same columns as the ungrouped `data.frame` in Step 2.
  5. For the variable and key-value, fill in the corresponding cell in the
     new data.frame based on the following rules:
     (i) if N_k = 1 => assign that cell's one distinct value from Step 2
