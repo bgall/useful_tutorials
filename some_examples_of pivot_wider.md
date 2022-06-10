@@ -1,17 +1,21 @@
+# An example of reshaping your data with `pivot_longer` 
+
+
+## Overview
+
+Sometimes the data structure reshaping functions (e.g., `pivot_longer` and `pivot_wider`) in the `tidyr` package can produce surprising results. In this document, I walk through an example of how to reshape data from long to wide. This is a routine task for data analysts, especially those who work with repeated-measure data (longitudinal, time-series cross-sectional, etc.) and other nested data. However, I created this brief example to illustrate how some of the not-so-well-documented arguments can be used to flexibly pre and post-process your data.
+
+# Getting Started
+
+### Simulating Example Data 
+We'll start by simulating some arbitrary panel data with a "long" structure. Specifically, assume that we have data on the `response`s of `n_persons` people to `n_items` survey items asked on `n_waves` measurement occasions, plus additional variables that may vary by `person`, `item`, and/or `wave` (i.e. time). By nature of its long structure, our `data.frame` contains one row for each and every response made by any of the persons to any survey item during any wave of data collection. IN addition to columns identifying the person, wave, and item associate with the item response, the other aforementioned variables are stored in their own respective columns.
+
+
 ``` r
 # Packages
 library(tidyr)
-#> Warning: package 'tidyr' was built under R version 4.1.3
 library(dplyr)
-#> Warning: package 'dplyr' was built under R version 4.1.3
-#> 
-#> Attaching package: 'dplyr'
-#> The following objects are masked from 'package:stats':
-#> 
-#>     filter, lag
-#> The following objects are masked from 'package:base':
-#> 
-#>     intersect, setdiff, setequal, union
+
 set.seed(123)
 
 ####################################################
@@ -51,17 +55,19 @@ personitem_table <- df_person %>%
                     mutate(quality = sample(c("low", "med", "high"), n(), replace = TRUE))
 
 df_personitem <- left_join(df_person, personitem_table, by = c("person", "item"))
+```
 
+### Losing "unused" variables while reshaping data from long to wide
+
+Suppose we no want to reshape our data from its long structure to a wider structure. We could "widen" our data in different ways depending upon how we wish to group the item responses. For example, we could replace the `person` and `response` columns with `n_persons` columns, where each replacement column contains the item responses of one of the `n_persons` unique people in our sample. Alternatively, we could replace the `person` and `response` columns with a set of `n_items` columns, where each replacement column contains the item responses to one of the  `n_items` unique items asked across people and measurement occasions. In both cases, we would remove rows from our `data.frame` to add columns, essentially shifting information stored in rows into columns.
+
+In our case, let's make our data wider by adding columns for each of the `n_waves` measurement occasions. The desired outcome is a `data.frame` where each row contains _all_ of the responses one person made to one survey item across all of the waves of data collection.
+
+``` r
 ####################################################
 # Reshape our data from long to wide
 ####################################################
 
-# Let's assume that we want to produce the following data.frame:
-# - Each row uniquely identifies a person*item combination
-# - Contains "item" and "person" columns to identify who made the response and
-#   the item to which it corresponds.
-# - For each wave of responses collected, contains 1 "wave" column
-# - Each wave column contains the response for that wave, person, item combo.
 df_personitem %>% pivot_wider(
   id_cols = c(person, item),
   id_expand = TRUE,
@@ -80,29 +86,18 @@ df_personitem %>% pivot_wider(
 #> 4      2 a                0.79            0.94            0.29
 #> 5      2 b                0.41            0.41            0.29
 #> 6      2 c                0.29            0.94            0.79
+```
 
-# Everything looks good but we are missing variables that were not make up the 
-# keys or values for the widening. For example, birth, quality, and both of the
-# "irrelevant_" variables were dropped by default because they were not used.
+While this looks pretty good, we are missing all of the variables that were not provided in the `pivot_wider` call. This is because the default behavior of `pivot_wider` is to drop "unused' variables, defined in the [documentation](https://tidyr.tidyverse.org/reference/pivot_wider.html) as: "columns not identified by id_cols, names_from, or values_from".
 
-# Ideally, we would have those "unused" variables in our data. Yet keeping the 
-# unused variables requires a strategy for dealing with variables that may vary 
-# across some combination of keys (i.e. wave, person, item). This is because 
-# widening our data removes grows from our dataset to add the information 
-# contained in those rows as additional columns. As we remove rows, we effectively
-# are collapsing them together and adding additional columns. When we try to do 
-# this for the unused variables, we may end up asking pivot_wider() to collapse
-# rows that differ on those variables. This will throw an error because there are
-# many ways this could be done and the software chooses not to make assumptions.
+### Errors when trying to retain unused variables
 
-# To demonstrate the above, we can reshape our data using the exact same call,
-# but while specifying that the unused variables should be included. I do this
-# by passing a function to the unused_fn argument that is supposed to return
-# a single summary value per key (in our case, person*id). I accomodate different
-# types of vectors by using a function that effectively groups rows by person*id
-# and returns each group's unique values for each unused variable. In order for
-# pivot_longer to work, this would need to return 1 value per unused variable 
-# per group.
+Ideally, we wouldn't throw away the unused variables since they may contain useful information. However, retaining the unused variables requires a strategy for dealing with variables that may vary across some combination `wave` or `person`. This is because as we remove rows from our `data.frame` with `pivot_wider`, we effectively coalesce multiple rows rows into a single row. When any of the unused variables varies across the unique row identifiers in the wider data (i.e. `wave` and `person`), this cannot be done without loss of information and we are faced with an error message. In essence, we're asking the function to turn a length $k>1$ vector into a scalar value without specifying how.
+
+To demonstrate this, we can reshape our data using the exact same call as before, but explicitly asking `pivot_wider` to retain the unused variables. I do this
+by passing a function to the `unused_fn` argument of `pivot_wider`. This function is supposed to return a single value of each variable for each combination of `person` and `item`, so I design it to return the unique values of that variable for all rows matcing on a  `person`-`item` combination. When the the value of a variable does not vary across `person` or `item`, this will produce vector of length one. When the variable exhibits variation across those grouping variables, it will return a vector of length greater than one and throw an error.
+
+``` r
 df_personitem %>% pivot_wider(
   id_cols = c(person, item),
   id_expand = TRUE,
@@ -115,43 +110,38 @@ df_personitem %>% pivot_wider(
 #> Error in `value_summarize()`:
 #> ! Applying `unused_fn` to `irrelevant_number` must result in a single summary value per key.
 #> x Applying `unused_fn` resulted in a value with length 3.
+```
 
-# The error tells us that the function we passed to the unused_fn argument did
-# did not produce one value per person*item group for every variable. In some
-# cases, it produced 3 values rather than 1. This tells us that (a) some rows
-# with identical values of person and item had different values for some unused
-# variables and (b) we need a different strategy.
+The error tells us that the function we passed to the unused_fn argument did did not produce one value per person*item group for every variable. In some cases, it produced 3 values rather than 1. This tells us that (a) some rows with identical values of `person` and `item` had different values for some unused variables and (b) we need a different strategy.
 
-# There are different approaches to resolving this issue. Since there is no
-# reasonable way to assign 1 of the K > 1 distinct values for those CHARACTER
-# variables varying within person*item, we always set those values to NA. For
-# non-character variables, we can either set those values to NA or assign their
-# observed (i.e., complete case) mean.
+# A general approach to retaining unused variables
 
-# I implement both of these strategies below. The procedure is as follows:
-#  1. Keep variables that make up the key (where our key is item*person)
-#     and those that we want to retain in our wide data.
-#  2. Group the data by the key variables.
-#  3. Extract the count (N_k) of distinct values for each of the K variables in
-#     the grouped data for each key-value - I simultaneously calculate the
-#     number of unique values of e.g. quality and other variables for each
-#     person*item value.
-#  4. Create a new data.frame with a row for each distinct key-value pair and
-#     the same columns as the ungrouped data.frame in Step 2.
-#  5. For the variable and key-value, fill in the corresponding cell in the
-#     new data.frame based on the following rules:
-#     (i) if N_k = 1 => assign that cell's one distinct value from Step 2
-#     (ii) if N_k > 1 => assign NA
-#  6. Repeat Steps 4-5, except assign mean(x,na.rm = TRUE) instead of NA. Note
-#     that mean(x) is NA for character vectors and the numeric mean for logical
-#     vectors.
-#  7. Join the two new data.frames to the original data.frames, ensuring names
-#     of variables don't conflict.
+There are different approaches to resolving this issue. Since there is no reasonable way to assign $1$ of the $K > 1$ distinct values for those character variables varying within `person` or `item`, we always set those values to `NA`. For non-character variables, we can either set those values to NA or assign their observed (i.e., complete-case) mean. While `pivot_wider` notes that one can apply different functions to different variables to implement these different strategies, the documentation of how to do this is not particularly good. Instead, we'll employ both outside of the `pivot_wider` call as follows:
 
-# There are some features of summarise() that make this a bit more involved,
-# such as requiring nested data, but this is the high-level idea. Now I 
-# implement this.
+ 1. Keep variables that make up the key (where our key is item*person)
+    and those that we want to retain in our wide data.
+ 2. Group the data by the key variables.
+ 3. Extract the count (N_k) of distinct values for each of the K variables in
+    the grouped data for each key-value - I simultaneously calculate the
+    number of unique values of e.g. quality and other variables for each
+    person*item value.
+ 4. Create a new data.frame with a row for each distinct key-value pair and
+    the same columns as the ungrouped data.frame in Step 2.
+ 5. For the variable and key-value, fill in the corresponding cell in the
+    new data.frame based on the following rules:
+    (i) if N_k = 1 => assign that cell's one distinct value from Step 2
+    (ii) if N_k > 1 => assign NA
+ 6. Repeat Steps 4-5, except assign mean(x,na.rm = TRUE) instead of NA. Note
+    that mean(x) is NA for character vectors and the numeric mean for logical
+    vectors.
+ 7. Join the two new data.frames to the original data.frames, ensuring names
+    of variables don't conflict.
 
+There are some features of summarise() that make this a bit more involved,
+such as requiring nested data, but this is the high-level idea. Now I 
+implement this.
+
+``` r
 # Per the documentation for dplyr::summarise(), you need to store functions
 # in a data.frame/tibble to generate new columns containing the results of
 # passing those functions to summarise. We can wrap this in a function to
@@ -179,24 +169,6 @@ unique_table_nested <- df_personitem %>%
   select(-c(response, wave)) %>%
   group_by(person, item) %>%
   summarise(across(everything(), ~ make_recodes(.), .names = "{col}"))
-#> Warning in mean.default(x, na.rm = TRUE): argument is not numeric or logical:
-#> returning NA
-#> Warning in mean.default(x, na.rm = TRUE): argument is not numeric or logical:
-#> returning NA
-
-#> Warning in mean.default(x, na.rm = TRUE): argument is not numeric or logical:
-#> returning NA
-
-#> Warning in mean.default(x, na.rm = TRUE): argument is not numeric or logical:
-#> returning NA
-
-#> Warning in mean.default(x, na.rm = TRUE): argument is not numeric or logical:
-#> returning NA
-
-#> Warning in mean.default(x, na.rm = TRUE): argument is not numeric or logical:
-#> returning NA
-#> `summarise()` has grouped output by 'person'. You can override using the
-#> `.groups` argument.
 
 unique_table_nested %>% glimpse()
 #> Rows: 6
