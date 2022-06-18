@@ -1,8 +1,8 @@
-# A Brief Introduction to Using Looping and Vectorization to Upscale Variable
-
-# Manual column creation
+# A Brief Introduction to Using Looping and Vectorization to "Automate" Variable Generation
 
 Suppose you have an arbitrary `data.frame` object. You want to add an arbitrary number of new columns to this `data.frame` that are arbitrary functions of existing columns. It is common to use the `dplyr` package's `mutate()` function to accomplish this. In particular, many people will use what I call a "manual approach" where each item is added on its own, independent lines of code. 
+
+## Manual column creation
 
 In the example implementation of the "manual approach" provided below, I first create a `data.frame` with a single character vector (`x`). I then add four new columns (`var_a`, `var_b`, `var_c`, and `var_d`) that are functions of the column's values. Three columns use `grepl()` to search for a sub-string within `x` and return a value of 1 for those elements of the vector where a match is found (i.e. `greply()` is `TRUE` for that element) and a value of 0 otherwise. A fourth column returns a value of 1 for each element where `x` is missing and 0 otherwise.
 
@@ -65,7 +65,7 @@ df %>% mutate(
 
 The primary downside to this is that your computer must wait until one column is created before creating another. While many users do not wish to create enough columns nor rely on sufficiently time-intensive functions where this leads to noticeable slowdowns, it *can* do so. Alternative approaches can be faster by either exploiting parallel processing, functions that essentially do the same thing but rely on faster underlying C code, etc.
 
-# Automated column creation
+## Automated column creation
 
 If we want to minimize the amount of code and time that goes into column creation, we can try to automate some parts of the code. Automation may involve more "overhead" - both code and time - than manual creation when the number of columns is small. However, this is an investment to decrease the marginal effort of adding additional columns.
 
